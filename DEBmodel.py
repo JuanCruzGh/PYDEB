@@ -214,7 +214,7 @@ def DEBmodel(timestep, Sdown, Ldown, T_a, u, q_a, RH_sfc, r,
     # → last element → Python index [N-2]
     G_i = k_d * (T_d_out[N - 2] - T_f) / h   # W/m²
 
-    melt = G_i * timestep / (rho_i * L_f)     # m water equivalent
+    melt = G_i * timestep / (rho_w * L_f)     # m water equivalent
 
     if melt < 0:
         melt = 0
