@@ -52,15 +52,15 @@ from config import CONSTANTS, MODEL, SNOW, SITES
 # =============================================================================
 # DEBRIS COVER SITES
 DATE_START = '2023-02-22'
-DATE_END   = '2026-02-18'
+DATE_END   = '2026-02-28'
 
 # DEBRIS TRANSITION SITES
 # DATE_START = '2024-02-18'
-# DATE_END   = '2026-02-18'
+# DATE_END   = '2026-02-28'
 
 # DEBRIS FREE SITES
 # DATE_START = '2024-02-18'
-# DATE_END   = '2026-02-19'
+# DATE_END   = '2026-02-28'
 
 # Derive a compact string used in filenames and plot titles
 _ts  = pd.Timestamp(DATE_START)
@@ -73,7 +73,7 @@ period_str = f"{yr_start}_{yr_end}" if yr_start != yr_end else str(yr_start)
 # PATHS
 # =============================================================================
 INPUT_DIR  = r"C:\Users\ThinkPad\OneDrive\IANIGLA\PublicacionBalanceEnergia\input_debmodel\primary_interp"
-OUTPUT_DIR = r"C:\Users\ThinkPad\OneDrive\IANIGLA\PublicacionBalanceEnergia\output_debmodel"
+OUTPUT_DIR = r"C:\Users\ThinkPad\OneDrive\IANIGLA\PublicacionBalanceEnergia\output_debmodel\outputs_2023_2026_all"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -90,6 +90,7 @@ T0     = CONSTANTS["T0"]
 Lapse  = CONSTANTS["Lapse"]
 L_v    = CONSTANTS["L_v"]
 L_f    = CONSTANTS["L_f"]
+L_s    = CONSTANTS["L_s"]
 rho_w  = CONSTANTS["rho_w"]
 c_w    = CONSTANTS["c_w"]
 c_ad   = CONSTANTS["c_ad"]
@@ -226,9 +227,23 @@ for site_name, site_cfg in SITES.items():
     totalmelt_array   = np.zeros(nt)
     T_s_array         = np.full(nt, np.nan)
     T_d_matrix        = np.full((nt, N - 1), np.nan)
-    LE_array          = np.full(nt, np.nan)
+
+    # --- Diagnóstico completo de flujos (todas las ramas) --------------------
+    Snet_array    = np.full(nt, np.nan)   # SW neta
+    Ldown_array   = np.full(nt, np.nan)   # LW entrante (pass-through forzante)
+    Lup_array     = np.full(nt, np.nan)   # LW saliente
+    H_array       = np.full(nt, np.nan)   # calor sensible (QH)
+    LE_array      = np.full(nt, np.nan)   # calor latente  (QL)
+    P_array       = np.full(nt, np.nan)   # flujo de calor por lluvia
+    QC_array      = np.full(nt, np.nan)   # conductivo en superficie (solo detrito)
+    totflux_array = np.full(nt, np.nan)   # hielo/nieve: flujo total a T_s convergida
+                                          # detrito: residuo de cierre (~0, control)
+    regime_array  = np.empty(nt, dtype=object)   # 'snow' / 'ice' / 'debris'
+
     sublimation_array = np.zeros(nt)
     deposition_array  = np.zeros(nt)
+    sublimation_mwe_array      = np.zeros(nt)   # masa sublimada de HIELO (m w.e./h)
+    snow_sublimation_mwe_array = np.zeros(nt)   # masa sublimada de NIEVE (m w.e./h)
 
     # -------------------------------------------------------------------------
     # 5. INITIAL CONDITIONS
@@ -322,11 +337,9 @@ for site_name, site_cfg in SITES.items():
 
         # ------------------------------------------------------------------
         # BRANCH 1: Snow present → CleanIceModel with SNOW parameters
-        # Applies to ALL site types when snow_presence == 1.
-        # CleanIceModel return order (9 values):
+        # CleanIceModel return order (9 values, verificado en CleanIceModel.py):
         #   (melt, T_s, Snet, Ldown, Lup, H, LE, P, totflux)
-        #   index:   0    1    2     3     4   5   6   7     8
-        #   → latent heat flux (LE) is index [6]; [5] is sensible heat (H)
+        #   index:   0    1    2     3    4   5   6  7     8
         # ------------------------------------------------------------------
         if int(data['snow_presence'].iloc[t]) == 1:
 
@@ -340,12 +353,25 @@ for site_name, site_cfg in SITES.items():
             snowmelt_array[t]  = float(snow_results[0])
             totalmelt_array[t] = snowmelt_array[t]
 
-            LE_out          = float(snow_results[6])       # latent heat flux (LE), index [6]
-            LE_array[t]     = LE_out
+            Snet_array[t]    = float(snow_results[2])
+            Ldown_array[t]   = float(snow_results[3])
+            Lup_array[t]     = float(snow_results[4])
+            H_array[t]       = float(snow_results[5])
+            LE_out           = float(snow_results[6])
+            LE_array[t]      = LE_out
+            P_array[t]       = float(snow_results[7])
+            totflux_array[t] = float(snow_results[8])
+            regime_array[t]  = 'snow'
+            
+            T_s_snow = float(snow_results[1])
+
             # LE < 0: vapour leaves surface → sublimation/evaporation (mass loss)
             # LE > 0: vapour onto surface  → deposition/condensation (mass gain)
+
             if LE_out < 0:
                 sublimation_array[t] = abs(LE_out)
+                L_eff = L_s if T_s_snow < 0.0 else L_v
+                snow_sublimation_mwe_array[t] = (-LE_out) * timestep / L_eff / 1000.0
             elif LE_out > 0:
                 deposition_array[t]  = LE_out
 
@@ -372,25 +398,42 @@ for site_name, site_cfg in SITES.items():
             icemelt_array[t]   = float(ice_results[0])
             totalmelt_array[t] = icemelt_array[t]
 
-            LE_out          = float(ice_results[6])        # latent heat flux (LE), index [6]
-            LE_array[t]     = LE_out
+            Snet_array[t]    = float(ice_results[2])
+            Ldown_array[t]   = float(ice_results[3])
+            Lup_array[t]     = float(ice_results[4])
+            H_array[t]       = float(ice_results[5])
+            LE_out           = float(ice_results[6])
+            LE_array[t]      = LE_out
+            P_array[t]       = float(ice_results[7])
+            totflux_array[t] = float(ice_results[8])
+            regime_array[t]  = 'ice'
+            
+            T_s_real = float(ice_results[1])   # T_s convergida (puede ser <0°C)
+
             # LE < 0: vapour leaves surface → sublimation/evaporation (mass loss)
             # LE > 0: vapour onto surface  → deposition/condensation (mass gain)
             if LE_out < 0:
                 sublimation_array[t] = abs(LE_out)
+                L_eff = L_s if T_s_real < 0.0 else L_v
+                # kg/m2 == mm w.e.; /1000 -> m w.e.
+                sublimation_mwe_array[t] = (-LE_out) * timestep / L_eff / 1000.0
             elif LE_out > 0:
                 deposition_array[t]  = LE_out
 
-            # Ice surface is fixed at melting point.
-            # T_d_in is reset to all-T_f each step because bare ice has no
-            # debris thermal mass to carry forward. (LOGIC #7: intentional)
+            # T_d_in reset each step: bare ice has no debris thermal mass
+            # to carry forward. (LOGIC #7: intentional)
             T_s_in           = T_f
             T_d_in           = np.linspace(T_s_in, T_f, N, dtype=np.float64)[:-1]
-            T_s_array[t]     = T_f
+            # DIAGNÓSTICO: guardamos la T_s REAL convergida (puede ser < 0 °C
+            # de noche desde FIX #A), no T_f fijo. Clave para auditar QH.
+            T_s_array[t]     = float(ice_results[1])
             T_d_matrix[t, :] = np.full(N - 1, T_f)
 
         # ------------------------------------------------------------------
         # BRANCH 3: No snow, debris-covered site → DEBmodel
+        # DEBmodel return order (9 values, verificado en DEBmodel.py):
+        #   (melt, T_s_out, T_d_out, Snet, Lup, G, H, LE, P)
+        #   index:   0      1        2      3     4    5  6  7   8
         # ------------------------------------------------------------------
         else:
 
@@ -405,12 +448,24 @@ for site_name, site_cfg in SITES.items():
             melt_t  = float(results[0])
             T_s_out = float(results[1])
             T_d_out = np.array(results[2], dtype=np.float64)
-            LE_out  = float(results[7])
+
+            Snet_array[t]  = float(results[3])
+            Ldown_array[t] = Ldown                    # pass-through del forzante
+            Lup_array[t]   = float(results[4])
+            QC_array[t]    = float(results[5])
+            H_array[t]     = float(results[6])
+            LE_out         = float(results[7])
+            LE_array[t]    = LE_out
+            P_array[t]     = float(results[8])
+            # Residuo de cierre del balance en superficie (debería ser ~0;
+            # si no lo es, el Newton-Raphson no convergió bien ese paso)
+            totflux_array[t] = (Snet_array[t] + Ldown + Lup_array[t] +
+                                QC_array[t] + H_array[t] + LE_out + P_array[t])
+            regime_array[t]  = 'debris'
 
             debmelt_array[t]   = melt_t
             totalmelt_array[t] = melt_t
 
-            LE_array[t] = LE_out
             # LE < 0: vapour leaves surface → sublimation/evaporation (mass loss)
             # LE > 0: vapour onto surface  → deposition/condensation (mass gain)
             if LE_out < 0:
@@ -429,15 +484,31 @@ for site_name, site_cfg in SITES.items():
     # -------------------------------------------------------------------------
     # 7. EXPORT RESULTS
     # -------------------------------------------------------------------------
+    # Energía de fusión equivalente al melt del timestep (W m-2) — comparable
+    # entre ramas: en hielo ≈ totflux de las horas de fusión; en detrito ≈ G_i
+    # en la base del detrito (recorta los G_i < 0 igual que el melt).
+    Qmelt_array = totalmelt_array * rho_w * L_f / timestep
+
     tbl_base = pd.DataFrame({
         'Fecha'            : pd.to_datetime(dates),
+        'regime'           : regime_array,
         'TotalMelt_m_we'   : totalmelt_array,
         'SnowMelt_m_we'    : snowmelt_array,
         'DebrisMelt_m_we'  : debmelt_array,
         'IceMelt_m_we'     : icemelt_array,
         'T_s_surface_C'    : T_s_array,
+        'Snet_W_m2'        : Snet_array,
+        'Ldown_W_m2'       : Ldown_array,
+        'Lup_W_m2'         : Lup_array,
+        'H_W_m2'           : H_array,
         'LE_W_m2'          : LE_array,
+        'P_W_m2'           : P_array,
+        'QC_W_m2'          : QC_array,
+        'TotFlux_W_m2'     : totflux_array,
+        'Qmelt_W_m2'       : Qmelt_array,
         'Sublimation_W_m2' : sublimation_array,
+        'Sublimation_m_we'     : sublimation_mwe_array,       # solo hielo
+        'SnowSublimation_m_we' : snow_sublimation_mwe_array,  # solo nieve
         'Deposition_W_m2'  : deposition_array,
     })
 
@@ -472,92 +543,20 @@ for site_name, site_cfg in SITES.items():
     cum_total  = np.cumsum(totalmelt_array)
 
     if is_ice_site:
-        hourly_series = icemelt_array
-        hourly_label  = 'Ice melt (m w.e./h)'
+        hourly_series = icemelt_array + sublimation_mwe_array
+        hourly_label  = 'Ice ablation: melt + subl (m w.e./h)'
         hourly_color  = 'steelblue'
     else:
         hourly_series = debmelt_array
         hourly_label  = 'Debris melt (m w.e./h)'
         hourly_color  = 'brown'
-
-    fig, ax1 = plt.subplots(figsize=(6.85, 4.5))
-
-    ax1.set_xlabel('Fecha')
-    ax1.set_ylabel(hourly_label, color=hourly_color)
-
-    ax1.plot(plot_dates, hourly_series,
-             color=hourly_color,
-             linewidth=0.8,
-             alpha=0.9,
-             label=hourly_label)
-
-    ax1.plot(plot_dates, snowmelt_array,
-             color='lightblue',
-             linewidth=0.6,
-             alpha=1,
-             label='Snow melt (m w.e./h)')
-
-    ax1.tick_params(axis='y', labelcolor=hourly_color)
-
-    ax1.set_xlim(pd.to_datetime(DATE_START),
-                 pd.to_datetime(DATE_END))
-
-    ax2 = ax1.twinx()
-
-    cum_snow = np.cumsum(snowmelt_array)
-
-    if is_ice_site:
-
-        cum_ice   = np.cumsum(icemelt_array)
-        cum_stack = cum_ice + cum_snow
-
-        ax2.set_ylabel('Cumulative melt (m w.e.)')
-
-        ax2.fill_between(plot_dates, 0,       cum_ice,   color='lightblue',   alpha=0.2, label='Cum. ice melt')
-        ax2.fill_between(plot_dates, cum_ice,  cum_stack, color='cyan',        alpha=0.2, label='Cum. snow melt')
-
-    else:
-
-        cum_debris = np.cumsum(debmelt_array)
-        cum_stack  = cum_debris + cum_snow
-
-        ax2.set_ylabel('Cumulative melt (m w.e.)')
-
-        ax2.fill_between(plot_dates, 0,          cum_debris, color='tab:orange', alpha=0.2, label='Cum. debris melt')
-        ax2.fill_between(plot_dates, cum_debris,  cum_stack,  color='cyan',       alpha=0.2, label='Cum. snow melt')
-
-    ax2.tick_params(axis='y')
-    ax2.set_ylim(bottom=0)
-
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-    fig.autofmt_xdate()
-
-    plt.title(f'Ablación Horcones Superior — {site_name}  ({period_str.replace("_", "–")})')
-
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize=8)
-
-    plt.grid(False)
-    plt.tight_layout()
-
-    fig_path = os.path.join(OUTPUT_DIR, f'plot_{site_name}_{period_str}.png')
-    plt.savefig(fig_path, dpi=300)
-    plt.show()
-    plt.close()
-
-    print(f"  Plot saved    → {fig_path}")
-
-    # summary[site_name] = {
-    #     "dates"    : plot_dates,
-    #     "cum_main" : np.cumsum(hourly_series),
-    #     "cum_snow" : np.cumsum(snowmelt_array),
-    # }
-    
+   
     summary[site_name] = {
     "dates"    : plot_dates,
     "cum_main" : np.cumsum(hourly_series),
     "cum_snow" : np.cumsum(snowmelt_array),
+    "cum_melt_only" : np.cumsum(icemelt_array if is_ice_site else debmelt_array),
+    "cum_subl"      : np.cumsum(sublimation_mwe_array) if is_ice_site else None,   
 
     # --- site parameters from config ---
     "is_ice_site" : is_ice_site,
@@ -571,6 +570,7 @@ for site_name, site_cfg in SITES.items():
     # ice sites
     "albedo_i"    : albedo_i if is_ice_site else np.nan,
 }
+
 
 # =============================================================================
 # SUMMARY PLOT: cumulative melt for all sites
@@ -603,7 +603,65 @@ if summary:
         r'_C$', '', regex=True
     )
 
-    fig, ax = plt.subplots(figsize=(6.85, 4.5))
+
+    # ---------------------------------------------------------------------
+    # GAP ENVELOPE — reconstruccion min/max del melt en huecos de forzante
+    #   min: gaps aportan 0 melt (comportamiento actual del modelo)
+    #   max: cada dia gap sin nieve se rellena con el melt medio de los
+    #        dias validos en una ventana de +/-15 dias.
+    #   Dias gap con nieve segun ANDESMAG (dato satelital, disponible aun
+    #   sin meteo) NO se rellenan: melt de detrito ~0 bajo nieve.
+    # ---------------------------------------------------------------------
+    def gap_envelope(dates, cum_main, site_name,
+                     window_days=15, min_hours_valid=20):
+
+        melt_h = pd.Series(
+            np.diff(np.asarray(cum_main), prepend=0.0),
+            index=pd.DatetimeIndex(dates)
+        )
+
+        cal = pd.date_range(pd.Timestamp(DATE_START).normalize(),
+                            pd.Timestamp(DATE_END).normalize(), freq='D')
+
+        daily_melt  = melt_h.resample('D').sum().reindex(cal, fill_value=0.0)
+        hours_valid = melt_h.resample('D').count().reindex(cal, fill_value=0)
+        gap_day     = hours_valid < min_hours_valid
+
+        # Mascara de nieve diaria desde el met_data (ANDESMAG cubre el gap)
+        met_env = pd.read_csv(
+            os.path.join(INPUT_DIR, f"met_data_{site_name}.csv"),
+            parse_dates=['date']).set_index('date')
+        snow_daily = (met_env['snow_presence'].fillna(0)
+                      .resample('D').mean()
+                      .reindex(cal).fillna(0))
+        snowy_day = snow_daily >= 0.5   # dia nevado = mayoria de horas con flag
+
+        # Tasa "tipica" local: media movil centrada de los dias validos
+        # (P75 en vez de media: cambiar .mean() por .quantile(0.75))
+        valid_melt = daily_melt.where(~gap_day)
+        typical = (valid_melt
+                   .rolling(f'{2*window_days + 1}D', center=True, min_periods=5)
+                   .mean()
+                   .fillna(0.0)
+                   .clip(lower=0.0))
+
+        # Relleno solo en dias gap SIN nieve; nunca por debajo del parcial ya medido
+        fill = np.where(gap_day & ~snowy_day,
+                        np.maximum(typical.values - daily_melt.values, 0.0),
+                        0.0)
+
+        cum_min = daily_melt.cumsum().values
+        cum_max = (daily_melt + fill).cumsum().values
+
+        n_filled = int((gap_day & ~snowy_day).sum())
+        n_snowgap = int((gap_day & snowy_day).sum())
+        print(f"    [{site_name}] gap envelope: {n_filled} dias rellenados, "
+              f"{n_snowgap} dias gap con nieve (no rellenados) | "
+              f"melt extra max = {cum_max[-1] - cum_min[-1]:.3f} m w.e.")
+
+        return cal, cum_min, cum_max
+
+    fig, ax = plt.subplots(figsize=(6.85, 3.5))
 
     # ---------------------------------------------------------------------
     # TEXT BLOCK WITH SITE PARAMETERIZATION
@@ -618,7 +676,24 @@ if summary:
             label=f'{site_name} model',
             color=color,
             linewidth=1.5,
-            linestyle='-'
+            linestyle='-',
+            alpha=0.5
+        )
+        
+        # --- Abanico min/max por gaps de forzante ---
+        cal_env, cum_min_env, cum_max_env = gap_envelope(
+            s_data["dates"], s_data["cum_main"], site_name
+        )
+        ax.fill_between(
+            cal_env, cum_min_env, cum_max_env,
+            color=color, alpha=0.25, linewidth=0, zorder=2,
+            label=f'{site_name} gap-fill max'
+        )
+        # Borde superior del abanico con el mismo estilo que la serie
+        ax.plot(
+            cal_env, cum_max_env,
+            color=color, linewidth=1.5, linestyle='-', alpha=0.5,
+            zorder=3
         )
 
         site_stakes = stakes_df[
@@ -627,10 +702,21 @@ if summary:
 
         if not site_stakes.empty:
 
+            # Balizas perdidas (h_m == 3): el valor medido es un MINIMO
+            # confiable; el maximo es incierto -> barra de error solo
+            # hacia arriba (asimetrica), no +-.
+            err  = site_stakes['cum_ablation_err_mweq'].to_numpy(dtype=float)
+            lost = np.isclose(site_stakes['h_m'].to_numpy(dtype=float), 3.0)
+
+            yerr = np.vstack([
+                np.where(lost, 0.0, err),   # rama inferior: 0 si es perdida
+                err,                        # rama superior: siempre
+            ])
+
             ax.errorbar(
                 site_stakes['end_date'],
                 site_stakes['cum_ablation_mweq'],
-                yerr=site_stakes['cum_ablation_err_mweq'],
+                yerr=yerr,
                 fmt='o',
                 color=color,
                 ecolor=color,
@@ -668,7 +754,7 @@ if summary:
     # AXES
     # ---------------------------------------------------------------------
     ax.set_xlabel('Fecha')
-    ax.set_ylabel('Cumulative melt (m w.e.)')
+    ax.set_ylabel('Cumulative ablation (m w.e.)')
     ax.set_ylim(bottom=0)
 
     ax.set_title(
@@ -679,9 +765,10 @@ if summary:
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     fig.autofmt_xdate()
 
-    ax.legend(loc='upper left', fontsize=8, ncol=2)
+    # ax.legend(loc='lower right', fontsize=8, ncol=2)
+    ax.legend("")
 
-    ax.grid(True, alpha=0.3)
+    ax.grid(False)
 
     # ---------------------------------------------------------------------
     # ADD PARAMETERIZATION TEXT
@@ -690,7 +777,7 @@ if summary:
 
     ax.text(
         0.015,
-        0.85,
+        0.95,
         textstr,
         transform=ax.transAxes,
         fontsize=10,

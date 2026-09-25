@@ -148,19 +148,6 @@ def DEBmodel(timestep, Sdown, Ldown, T_a, u, q_a, RH_sfc, r,
 
         den = (f_plus - f_minus) / (2 * range_)
 
-        # print("\nDEBUG TYPES")
-        # print("num:", type(num), np.shape(num))
-        # print("den:", type(den), np.shape(den))
-        
-        # print("Lup:", type(Lup(Ts[n], epsilon_d, sigma)))
-        # print("G:", type(G(Ts[n], Td[0], k_d, h)))
-        # print("H:", type(H(T_a, Ts[n], u, q_a, z_a, z_0_d, g, c_ad, k_vk, Mair, Rgas, p_a)))
-        # print("Lat:", type(Lat(T_a, Ts[n], u, q_a, RH_sfc, p_a, z_a, z_0_d, g, L_v, k_vk, Mair, Rgas)))
-        # print("P:", type(P(T_a, Ts[n], r, rho_w, c_w)))
-        
-        # print("Td shape:", np.shape(Td))
-        # print("Td[0]:", type(Td[0]), np.shape(Td[0]))
-
         # Newton-Raphson update
         Ts[n + 1] = Ts[n] - num / den
 
@@ -175,18 +162,6 @@ def DEBmodel(timestep, Sdown, Ldown, T_a, u, q_a, RH_sfc, r,
         if Ts[n + 1] - Ts[n] < -1:
             Ts[n + 1] = Ts[n] - 1
 
-        # -----------------------------------------------------------------
-        # Debug output if surface temperature drops below -40 °C (as in MATLAB)
-        # -----------------------------------------------------------------
-        # if Ts[n] < -40:
-        #     print("DEBUG: Ts < -40 °C at iteration", n)
-        #     print("  Lat  :", Lat(T_a, Ts[n] - range_, u, q_a, RH_sfc, p_a, z_a, z_0_d, g, L_v, k_vk, Mair, Rgas))
-        #     print("  Lup  :", Lup(Ts[n] - range_, epsilon_d, sigma))
-        #     print("  Snet :", Snet)
-        #     print("  Ldown:", Ldown)
-        #     print("  G    :", G(Ts[n], Td[0], k_d, h))
-        #     print("  P    :", P(T_a, Ts[n] - range_, r, rho_w, c_w))
-        #     print("  H    :", H(T_a, Ts[n] + range_, u, q_a, z_a, z_0_d, g, c_ad, k_vk, Mair, Rgas, p_a))
 
         n += 1
 

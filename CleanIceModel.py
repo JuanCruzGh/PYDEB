@@ -1,43 +1,47 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri May 22 12:47:43 2026
-
-@author: ThinkPad
-"""
-
-# -*- coding: utf-8 -*-
-"""
-CleanIceModel.py  —  v2
+CleanIceModel.py  —  v3
 ------------------------
 Energy-balance model for bare ice and snow surfaces.
 
-Changes vs v1
--------------
+Follows the bare-ice scheme of Reid & Brock (2010, MATLAB original), with
+the following documented deviations/extensions:
+
+Changes vs v1 (MATLAB-faithful version)
+---------------------------------------
 FIX #A  Sub-freezing surface temperature
-        T_s is no longer pinned at T_f = 0 °C every timestep.
-        When the total energy flux is negative (surface cooling), T_s is
-        solved iteratively until the energy balance closes, clamped to a
-        minimum of T_COLD_MIN (default –40 °C).  Melt only occurs when the
-        converged T_s reaches 0 °C AND totflux > 0.  This prevents spurious
-        melt during cold periods (nights, winter) that was the main driver of
-        overestimation in both clean-ice sites.
+        The original pins T_s = T_f every timestep and clips negative melt
+        to zero, so fluxes in non-melting hours are those of a fictitious
+        0 °C surface. Here, when the total flux at T_f is negative, T_s is
+        solved by bisection until the energy balance closes, clamped to
+        T_COLD_MIN (default –40 °C). Melt is unchanged with respect to the
+        original (both evaluate melt from the flux at T_f); what changes
+        are the diagnosed fluxes, T_s and the LE-derived sublimation in
+        cold hours, which the original misrepresents.
 
 FIX #B  rho_w used in melt conversion
-        The melt formula divides by rho_w (water density), not rho_i (ice
-        density), because melt is expressed in m water equivalent.  The
-        parameter rho_i received by this function is passed through but is
-        NOT used in the melt line.  See NOTE below.
+        The original divides by rho_i but labels the output m w.e.;
+        converting energy to m w.e. requires rho_w. rho_i is kept in the
+        signature for API compatibility but is not used in the melt line.
 
 FIX #C  Extended return tuple — flux diagnostics
-        The function now returns 9 values instead of 7:
+        Returns 9 values:
           (melt, T_s, Snet, Ldown, Lup_out, H_out, LE_out, P_out, totflux)
-          index:  0    1     2      3        4       5       6      7       8
-        This lets the run script store per-timestep flux terms for diagnosing
-        which component drives over/under-estimation.
+          index:  0    1     2      3        4       5       6      7      8
 
-NOTE: rho_i received here is the ICE density (kg/m³) from config.py.
-      Melt (m w.e.) is computed with rho_w, not rho_i.  rho_i is accepted
-      in the signature for API compatibility but is not used in melt calc.
+Changes vs v2
+-------------
+FIX #D  Bisection direction corrected (BUG)
+        F(T_s) is monotonically DECREASING in T_s (a colder surface emits
+        less and receives more turbulent heat): F(T_COLD_MIN) > 0 and
+        F(T_f) < 0 in the cold branch. v2 used the update rule for an
+        increasing function, so the solver never bracketed the root and
+        ran to an endpoint: T_s ≈ –40 °C in windy hours (huge spurious H,
+        deposition LE) or T_s ≈ 0 °C in calm hours (negative residual).
+        Detected via the hourly energy-closure check (mean residuals of
+        up to ~+1100 W m-2 in Feb–Apr 2024). Melt was NOT affected (melt
+        branch does not use the solver); T_s, QH, QL, Lup and sublimation
+        in cold hours were.
 
 Dependencies
 ------------
@@ -66,44 +70,8 @@ def CleanIceModel(timestep, Sdown, Ldown, T_a, u, q_a, r,
     """
     Energy-balance model for a bare-ice or snow surface.
 
-    Parameters
-    ----------
-    timestep  : int    time step (s)
-    Sdown     : float  downwelling shortwave radiation (W/m²)
-    Ldown     : float  downwelling longwave radiation (W/m²)
-    T_a       : float  air temperature (°C)
-    u         : float  wind speed (m/s)
-    q_a       : float  specific humidity of air (kg/kg)
-    r         : float  rainfall rate (m/s)
-    albedo_i  : float  surface albedo
-    epsilon_i : float  surface emissivity
-    z_0_i     : float  aerodynamic roughness length (m)
-    g         : float  gravitational acceleration (m/s²)
-    k_vk      : float  von Kármán constant
-    sigma     : float  Stefan-Boltzmann constant (W/m²·K⁴)
-    Rgas      : float  universal gas constant (J/mol·K)
-    Mair      : float  molar mass of dry air (kg/mol)
-    L_v       : float  latent heat of vaporisation (J/kg)
-    L_f       : float  latent heat of fusion (J/kg)
-    rho_w     : float  density of water (kg/m³)  — used in melt conversion
-    c_w       : float  specific heat of water (J/kg·K)
-    c_ad      : float  specific heat of dry air (J/kg·K)
-    rho_i     : float  density of ice (kg/m³)  — NOT used in melt calc (see NOTE)
-    T_f       : float  melting point (°C), normally 0.0
-    p_a       : float  atmospheric pressure (Pa)
-    z_a       : float  measurement height (m)
-
-    Returns  (index)
-    ----------------
-    0  melt      : float  melt rate (m w.e. per timestep); ≥ 0
-    1  T_s       : float  converged surface temperature (°C)
-    2  Snet      : float  net shortwave radiation (W/m²)
-    3  Ldown     : float  downwelling longwave (W/m²)  [pass-through]
-    4  Lup_out   : float  upwelling longwave (W/m²)
-    5  H_out     : float  sensible heat flux (W/m²)
-    6  LE_out    : float  latent heat flux (W/m²)
-    7  P_out     : float  precipitation heat flux (W/m²)
-    8  totflux   : float  total energy flux at converged T_s (W/m²)
+    (parámetros y retornos: idénticos a tu docstring actual — omitidos acá
+     por brevedad; dejá el tuyo tal cual)
     """
 
     # ------------------------------------------------------------------
@@ -114,19 +82,6 @@ def CleanIceModel(timestep, Sdown, Ldown, T_a, u, q_a, r,
     # Surface is assumed saturated (RH_sfc = 100 %)
     RH_sfc = 100.0
 
-    # ------------------------------------------------------------------
-    # FIX #A — iterative T_s solver
-    #
-    # Strategy:
-    #   1. First evaluate total flux assuming T_s = T_f (melting point).
-    #   2. If totflux >= 0  →  surface is at or above melting; T_s = T_f,
-    #      melt = totflux * timestep / (rho_w * L_f).
-    #   3. If totflux < 0   →  surface cools below 0 °C.  Iterate T_s
-    #      downward until the residual flux closes (≈ 0), meaning the
-    #      longwave and turbulent terms re-balance the shortwave deficit.
-    #      No melt occurs in this case.
-    # ------------------------------------------------------------------
-
     def _eval_flux(T_s_try):
         """Return total flux and individual components for a given T_s."""
         Lup_   = Lup(T_s_try, epsilon_i, sigma)
@@ -136,7 +91,7 @@ def CleanIceModel(timestep, Sdown, Ldown, T_a, u, q_a, r,
         tot_   = Snet + Ldown + Lup_ + H_ + LE_ + P_
         return tot_, Lup_, H_, LE_, P_
 
-    # --- Step 1: evaluate at melting point ---
+    # --- Step 1: evaluate at melting point (same trigger as the original) ---
     totflux_melt, Lup_out, H_out, LE_out, P_out = _eval_flux(T_f)
 
     if totflux_melt >= 0.0:
@@ -145,12 +100,14 @@ def CleanIceModel(timestep, Sdown, Ldown, T_a, u, q_a, r,
         totflux = totflux_melt
         # FIX #B: divide by rho_w, not rho_i
         melt = totflux * timestep / (rho_w * L_f)
-        if melt < 0.0:
-            melt = 0.0
 
     else:
-        # ---- SUB-FREEZING CONDITIONS: iterate T_s ----
-        # Simple bisection between T_f and T_COLD_MIN.
+        # ---- SUB-FREEZING CONDITIONS: bisection between T_COLD_MIN and T_f
+        # FIX #D — F(Ts) is DECREASING in Ts: F(T_lo = -40) > 0, F(T_hi = 0) < 0.
+        # If F(mid) > 0 the root lies ABOVE mid → raise the floor (T_lo).
+        # If no root exists above T_COLD_MIN (deep radiative deficit with
+        # turbulence suppressed), T_hi walks down and T_s clamps at -40 °C
+        # with a small negative residual — the intended clamp behaviour.
         T_lo = T_COLD_MIN
         T_hi = T_f
 
@@ -158,19 +115,13 @@ def CleanIceModel(timestep, Sdown, Ldown, T_a, u, q_a, r,
             T_mid = 0.5 * (T_lo + T_hi)
             flux_mid, _, _, _, _ = _eval_flux(T_mid)
             if flux_mid > 0.0:
-                T_hi = T_mid
-            else:
                 T_lo = T_mid
+            else:
+                T_hi = T_mid
             if (T_hi - T_lo) < _TOL_C:
                 break
 
         T_s = 0.5 * (T_lo + T_hi)
-
-        # Clamp to physically meaningful range
-        if T_s > T_f:
-            T_s = T_f
-        if T_s < T_COLD_MIN:
-            T_s = T_COLD_MIN
 
         # Re-evaluate fluxes at converged T_s
         totflux, Lup_out, H_out, LE_out, P_out = _eval_flux(T_s)

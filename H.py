@@ -44,10 +44,20 @@ def H(T_air, T_sfc, wind, q_air, z_a, z_0, g, c_ad, k_vk, Mair, Rgas, p_a):
         R_ib = g * delta_T * (z_a - z_0) / (T_mean_K * wind**2)
 
     # Correcciones por estabilidad/instabilidad
+    # if R_ib > 0.2:
+    #     R_ib = 0
+    # elif R_ib < -1:
+    #     R_ib = 0
+    
+    # Corrección por estabilidad (supresión turbulenta total)
     if R_ib > 0.2:
+        return 0.0, R_ib 
+    
+    # Corrección por inestabilidad extrema (se mantiene tratamiento original)
+    if R_ib < -1:
         R_ib = 0
-    elif R_ib < -1:
-        R_ib = 0
+        
+       
 
     # Calor específico del aire húmedo
     c_p = c_ad * (1 + 0.84 * q_air)

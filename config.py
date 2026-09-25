@@ -20,6 +20,7 @@ CONSTANTS = {
     "Lapse"  : 0.0065,
     "L_v"    : 2476000,
     "L_f"    : 334000,
+    "L_s"   : 2.83e6,  
     "rho_w"  : 999.7,
     "c_w"    : 4181.3,
     "c_ad"   : 1005,
@@ -67,42 +68,41 @@ SITES = {
         "d" : 0.5,
 
         # Debris parameters
-        "z_0_d"     : 0.017,
-        "k_d"       : 0.96, # 0.67 Conway & Rasmussen (2000) method; ref value 0.96,
-        "rho_d"     : 1496,
-        "c_d"       : 948,
+        "z_0_d"     : 0.0123, 
+        "k_d"       : 0.978,
+        "rho_d"     : 2685,
+        "c_d"       : 816,
         "epsilon_d" : 0.94,
         "albedo_d"  : 0.13,
 
     },
 
-    # "4500_T": {
+    "4500_T": {
 
-    #     "meteo_file" : "met_data_4500_T.csv",
+        "meteo_file" : "met_data_4500_T.csv",
 
-    #     "d" : 0.09,
+        "d" : 0.09,
 
-    #     "z_0_d"     : 0.016,
-    #     "k_d"       : 0.85, # 0.67 Conway & Rasmussen (2000) method; ref value 0.96,
-    #     "rho_d"     : 1496,
-    #     "c_d"       : 948,
-    #     "epsilon_d" : 0.94,
-    #     "albedo_d"  : 0.13,
+        "z_0_d"     : 0.03,
+        "k_d"       : 0.954, # 0.67 Conway & Rasmussen (2000) method; ref value 0.96,
+        "rho_d"     : 2685,
+        "c_d"       : 816,
+        "epsilon_d" : 0.94,
+        "albedo_d"  : 0.13,
 
-    # },
+    },
 
-    # "4500_I": {
+    "4500_I": {
 
-    #     "meteo_file" : "met_data_4500_I.csv",
+        "meteo_file" : "met_data_4500_I.csv",
 
-    #     "d" : 0.0,
+        "d" : 0.0,
 
-    #     "z_0_d"     : 0.005,  #0.007,
-    #     "epsilon_i" : 0.97,
-    #     "albedo_i"  :   0.38, #0.34,
+        "z_0_d"     : 0.0405 ,  
+        "epsilon_i" : 0.97,
+        "albedo_i"  :   0.34, 
         
-
-    # },
+    },
 
 
     "4500_DC": {
@@ -113,40 +113,42 @@ SITES = {
         "d" : 0.68,
 
         # Debris parameters
-        "z_0_d"     : 0.016,
-        "k_d"       : 1.6, # 0.81 Conway & Rasmussen (2000) method; ref value 0.96,
-        "rho_d"     : 1800,   #1496,
-        "c_d"       : 948,
+        # "z_0_d"     : 0.007, # 0.013-0.075; REF 0.016
+        # "k_d"       : 1.38, # 0.81 Conway & Rasmussen (2000) method; ref value 0.96,
+        "z_0_d"     : 0.0052, # 0.013-0.075; REF 0.016
+        "k_d"       : 1.423, # 0.81 Conway & Rasmussen (2000) method; ref value 0.96,
+        "rho_d"     : 2685,   #1496,
+        "c_d"       : 816,
         "epsilon_d" : 0.94,
-        "albedo_d"  : 0.1,
+        "albedo_d"  : 0.13,
 
     },
 
-    # "4600_T": {
+    "4600_T": {
 
-    #     "meteo_file" : "met_data_4600_T.csv",
+        "meteo_file" : "met_data_4600_T.csv",
 
-    #     "d" : 0.06,
+        "d" : 0.06,
 
-    #     "z_0_d"     : 0.016,
-    #     "k_d"       : 0.67, # 0.67 Conway & Rasmussen (2000) method; ref value 0.96,
-    #     "rho_d"     : 1496,
-    #     "c_d"       : 948,
-    #     "epsilon_d" : 0.94,
-    #     "albedo_d"  : 0.13,
+        "z_0_d"     : 0.09,
+        "k_d"       : 1.003, # 0.67 Conway & Rasmussen (2000) method; ref value 0.96,
+        "rho_d"     : 2685,
+        "c_d"       : 816,
+        "epsilon_d" : 0.94,
+        "albedo_d"  : 0.13,
 
-    # },
+    },
 
-    # "4600_I": {
+    "4600_I": {
 
-    #     "meteo_file" : "met_data_4600_I.csv",
+        "meteo_file" : "met_data_4600_I.csv",
 
-    #     "d" : 0.0,
+        "d" : 0.0,
 
-    #     "z_0_d"     : 0.007,  #0.007,
-    #     "epsilon_i" : 0.97,
-    #     "albedo_i"  :   0.52, #0.34,
+        "z_0_d"     : 0.0356,  
+        "epsilon_i" : 0.97,
+        "albedo_i"  :   0.34, 
 
-    # },
+    },
 
 }

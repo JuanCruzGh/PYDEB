@@ -58,10 +58,17 @@ def Lat(T_air, T_sfc, wind, q_air, RH_sfc, p_a, z_a, z_0, g, L_v, k_vk, Mair, Rg
         R_ib = g * (T_air - T_sfc) * (z_a - z_0) / (T_mean_K * wind**2)
 
     # Corrección por estabilidad alta (flujo laminar cesa por encima de 0.2)
-    if R_ib > 0.2:
-        R_ib = 0
+    # if R_ib > 0.2:
+    #     R_ib = 0
 
-    # Corrección por inestabilidad extrema (solo convección libre por debajo de -1)
+    # # Corrección por inestabilidad extrema
+    # if R_ib < -1:
+    #     R_ib = 0
+    
+    # Corrección por estabilidad alta (supresión turbulenta total; ver H.py)
+    if R_ib > 0.2:
+        return 0.0
+    # Corrección por inestabilidad extrema (se mantiene tratamiento original)
     if R_ib < -1:
         R_ib = 0
 
