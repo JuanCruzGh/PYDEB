@@ -6,4 +6,4 @@ PYDEB is an open-source Python implementation of the DEB-Model, a surface energy
 
 This code is associated with the article “Debris-driven ablation in the Horcones Superior glacier, Central Andes of Argentina” by Ghilardi Truffa et al. (under review).
 
-Status of the code: version under review.
+Status of the code: under review.
